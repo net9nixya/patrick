@@ -2,7 +2,7 @@ import sqlite3
 import time
 from aiogram import Bot, Dispatcher, executor, types
 from config import TOKEN, REFERAL_REWARD, BOT_NAME, ADMIN, CHANNEL_LINK, CHAT_LINK, ADMIN_USERNAME, OTZIVI_LINK, VIVODI_LINK, BOT_USERNAME, RULETKA_LINK, RULETKA_LINK2
-from keyboards import start_keyboard, earn_stars_keyboard, profile_keyboard, instruction_keyboard, roulette_keyboard, withdraw_keyboard, admin_confirm_keyboard, top_keyboard, promocode_keyboard, back_menu_keyboard
+from keyboards import start_keyboard, earn_stars_keyboard, profile_keyboard, instruction_keyboard, roulette_keyboard, withdraw_keyboard, admin_confirm_keyboard, top_keyboard, promocode_keyboard, back_menu_keyboard, admin_cmd_keyboard, vizruzka_keyboard
 
 bot = Bot(token=TOKEN)
 dp = Dispatcher(bot)
@@ -46,6 +46,8 @@ conn.commit()
 promo_active = set()  # Кто нажал кнопку промокодов
 promo_creation = {}   # Для создания новых промокодов админами
 promo_deletion = set()
+pending_give_stars = {}   # user_id -> True
+pending_take_stars = {}   # user_id -> True
 
 @dp.message_handler(commands=["start"])
 async def start_command(message: types.Message):
@@ -93,6 +95,98 @@ async def start_command(message: types.Message):
             reply_markup=start_keyboard(),
             parse_mode="HTML"
         )
+        
+@dp.message_handler(commands=["adm"])
+async def admin_command_handler(message: types.Message):
+    user_id = message.from_user.id
+
+    if user_id not in ADMIN:
+        # Игнорируем — без сообщений, без alert
+        return
+
+    text = (
+        "👑 Здравствуй, администратор Patrick`a. Вот доступные тебе команды:\n"
+        "<blockquote>"
+        "- <code>создать промокод</code>\n"
+        "- <code>удалить промокод</code>\n"
+        "- <code>активные промокоды</code>\n"
+        "- <code>выдать звезды [ID]</code>\n"
+        "- <code>забрать звезды [ID]</code>\n"
+        "</blockquote>"
+    )
+
+    await message.answer(text, parse_mode="HTML", reply_markup=admin_cmd_keyboard())
+    
+@dp.callback_query_handler(lambda c: c.data == "vizruzka")
+async def handle_vizruzka(callback_query: types.CallbackQuery):
+    user_id = callback_query.from_user.id
+
+    if user_id not in ADMIN:
+        return  # Тихо игнорируем
+
+    # Показываем клавиатуру с действиями выгрузки
+    text = "📦 Выгрузка данных. Выберите тип:"
+    await callback_query.message.edit_text(
+        text,
+        reply_markup=vizruzka_keyboard(),
+        parse_mode="HTML"
+    )
+    
+@dp.callback_query_handler(lambda c: c.data == "dump_users")
+async def handle_dump_users(callback_query: types.CallbackQuery):
+    if callback_query.from_user.id not in ADMIN:
+        return
+
+    db_path = "users.db"
+
+    try:
+        await bot.send_document(
+            chat_id=callback_query.from_user.id,
+            document=types.InputFile(db_path),
+            caption="📦 Выгрузка базы данных пользователей (users.db)"
+        )
+        await callback_query.answer("✅ Файл отправлен.")
+    except Exception as e:
+        print(f"Ошибка при отправке users.db: {e}")
+        await callback_query.answer("❌ Ошибка при отправке файла.", show_alert=True)
+        
+@dp.message_handler(text=["выдать звезды"])
+async def give_stars_command(message: types.Message):
+    if message.from_user.id not in ADMIN:
+        return
+    pending_give_stars[message.from_user.id] = True
+    await message.answer("✍️ Введите <code>ID</code> пользователя и количество звёзд через пробел:\nПример: <code>123456789 50</code>", parse_mode="HTML")
+
+@dp.message_handler(text=["забрать звезды"])
+async def take_stars_command(message: types.Message):
+    if message.from_user.id not in ADMIN:
+        return
+    pending_take_stars[message.from_user.id] = True
+    await message.answer("✍️ Введите <code>ID</code> пользователя и сколько звёзд забрать через пробел:\nПример: <code>123456789 25</code>", parse_mode="HTML")
+
+@dp.message_handler(lambda message: message.from_user.id in pending_give_stars or message.from_user.id in pending_take_stars)
+async def process_admin_star_change(message: types.Message):
+    try:
+        parts = message.text.strip().split()
+        target_id = int(parts[0])
+        amount = float(parts[1])
+
+        if message.from_user.id in pending_give_stars:
+            cursor.execute("UPDATE users SET stars = stars + ? WHERE user_id = ?", (amount, target_id))
+            conn.commit()
+            await message.answer(f"✅ Вы выдали {amount} ⭐️ пользователю {target_id}")
+            await bot.send_message(target_id, f"🎁 Вам выдано {amount} ⭐️ администрацией.")
+            pending_give_stars.pop(message.from_user.id)
+
+        elif message.from_user.id in pending_take_stars:
+            cursor.execute("UPDATE users SET stars = stars - ? WHERE user_id = ?", (amount, target_id))
+            conn.commit()
+            await message.answer(f"✅ Вы забрали {amount} ⭐️ у пользователя {target_id}")
+            await bot.send_message(target_id, f"⛔️ У вас было снято {amount} ⭐️ администрацией.")
+            pending_take_stars.pop(message.from_user.id)
+
+    except Exception as e:
+        await message.answer(f"❌ Ошибка обработки: {e}")
 
 # Обработчик кнопки "🎁 Ежедневка"
 @dp.callback_query_handler(lambda c: c.data == "daily_bonus")

@@ -152,3 +152,24 @@ def back_menu_keyboard():
         InlineKeyboardButton("⬅️ Назад в меню", callback_data="back_to_menu"),
     )
     return keyboard
+
+def admin_cmd_keyboard():
+    keyboard = InlineKeyboardMarkup(inline_keyboard=[
+        [
+            InlineKeyboardButton("Выгрузка", callback_data=f"vizruzka"),
+            InlineKeyboardButton("⬅️ Назад в меню", callback_data="back_to_menu"),
+        ]
+    ])
+    return keyboard
+
+def vizruzka_keyboard():
+    keyboard = InlineKeyboardMarkup(inline_keyboard=[
+        [
+            InlineKeyboardButton("👤 Пользователи", callback_data="dump_users"),
+            InlineKeyboardButton("⭐ Баланс", callback_data="dump_stars"),
+        ],
+        [
+            InlineKeyboardButton("⬅️ Назад", callback_data="adm_back")
+        ]
+    ])
+    return keyboard
