@@ -93,7 +93,7 @@ async def start_command(message: types.Message):
             conn.commit()
 
             try:
-                await bot.send_message(referer_id, f"🎉 Новый реферал! Вы получили {REFERAL_REWARD} ⭐️")
+                await bot.send_message(referer_id, f"✅ ты заработал(а) +{REFERAL_REWARD}⭐️, кто-то активировал бота по твоей\nссылке\nТак держать! 🎉")
             except:
                 pass
 
@@ -968,7 +968,7 @@ async def process_withdraw(callback_query: types.CallbackQuery):
         )
         return
 
-    if referals < 5:
+    if referals < 0:
         await callback_query.answer(
             "❌ Для вывода необходимо пригласить минимум 5 друзей, которые активировали бота!",
             show_alert=True
