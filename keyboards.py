@@ -98,27 +98,34 @@ from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
 def withdraw_keyboard():
     keyboard = InlineKeyboardMarkup(inline_keyboard=[
         [
-            InlineKeyboardButton("15⭐ (🧸)", callback_data="withdraw_15_1"),
-            InlineKeyboardButton("15⭐ (💝)", callback_data="withdraw_15_2"),
+            InlineKeyboardButton("15⭐ (🤡)", callback_data="withdraw_15_1"),
+            InlineKeyboardButton("15⭐ (❤️)", callback_data="withdraw_15_2"),
         ],
         [
-            InlineKeyboardButton("25⭐ (🌹)", callback_data="withdraw_25_1"),
-            InlineKeyboardButton("25⭐ (🎁)", callback_data="withdraw_25_2"),
+            InlineKeyboardButton("25⭐ (🐵)", callback_data="withdraw_25_1"),
+            InlineKeyboardButton("25⭐ (🎉)", callback_data="withdraw_25_2"),
         ],
         [
-            InlineKeyboardButton("50⭐ (🍾)", callback_data="withdraw_50_1"),
-            InlineKeyboardButton("50⭐ (💐)", callback_data="withdraw_50_2"),
+            InlineKeyboardButton("50⭐ (🐵 x2)", callback_data="withdraw_50_1"),
+            InlineKeyboardButton("50⭐ (🎉 x2)", callback_data="withdraw_50_2"),
         ],
         [
-            InlineKeyboardButton("50⭐ (🚀)", callback_data="withdraw_50_3"),
-            InlineKeyboardButton("50⭐ (🎂)", callback_data="withdraw_50_4"),
+            InlineKeyboardButton("100⭐ (🐵 x4)", callback_data="withdraw_100_1"),
+            InlineKeyboardButton("100⭐ (🎉 x4)", callback_data="withdraw_100_2"),
         ],
         [
-            InlineKeyboardButton("100⭐ (🏆)", callback_data="withdraw_100_1"),
-            InlineKeyboardButton("100⭐ (💍)", callback_data="withdraw_100_2"),
+            InlineKeyboardButton("500⭐", callback_data="withdraw_500_1"),
+            InlineKeyboardButton("1.000⭐", callback_data="withdraw_1000_2"),
         ],
         [
-            InlineKeyboardButton("100⭐ (💎)", callback_data="withdraw_100_3"),
+            InlineKeyboardButton("10.000⭐", callback_data="withdraw_10000_1"),
+            InlineKeyboardButton("50.000⭐", callback_data="withdraw_50000_2"),
+        ],
+        [
+            InlineKeyboardButton("100.000⭐", callback_data="withdraw_100000_1"),
+        ],
+        [
+            InlineKeyboardButton("Telegram Premium 3мес. (1000⭐️)", callback_data="withdraw_premium"),
         ],
         [
             InlineKeyboardButton("Telegram Premium 6мес. (1700⭐️)", callback_data="withdraw_premium"),
@@ -172,4 +179,23 @@ def vizruzka_keyboard():
             InlineKeyboardButton("⬅️ Назад", callback_data="adm_back")
         ]
     ])
+    return keyboard
+
+def tasks_keyboard(task_id, chat_id):
+    keyboard = InlineKeyboardMarkup(row_width=2)
+    keyboard.add(
+        InlineKeyboardButton("✅ Проверить подписку", callback_data=f"check_subscription_{task_id}_{chat_id}"),
+        InlineKeyboardButton("↗️ Пропустить задание", callback_data=f"skip_task_{task_id}"),
+    )
+    keyboard.add(
+        InlineKeyboardButton("🚀 Перейти в канал", url=f"https://t.me/c/{str(chat_id)[4:]}"),
+        InlineKeyboardButton("⬅️ Назад в меню", callback_data="back_to_menu"),
+    )
+    return keyboard
+
+def otziv_keyboard():
+    keyboard = InlineKeyboardMarkup(row_width=2)
+    keyboard.add(
+        InlineKeyboardButton("✅ Оставить отзыв", url=f"{OTZIVI_LINK}")
+    )
     return keyboard

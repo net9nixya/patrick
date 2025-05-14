@@ -1,8 +1,8 @@
 import sqlite3
 import time
 from aiogram import Bot, Dispatcher, executor, types
-from config import TOKEN, REFERAL_REWARD, BOT_NAME, ADMIN, CHANNEL_LINK, CHAT_LINK, ADMIN_USERNAME, OTZIVI_LINK, VIVODI_LINK, BOT_USERNAME, RULETKA_LINK, RULETKA_LINK2
-from keyboards import start_keyboard, earn_stars_keyboard, profile_keyboard, instruction_keyboard, roulette_keyboard, withdraw_keyboard, admin_confirm_keyboard, top_keyboard, promocode_keyboard, back_menu_keyboard, admin_cmd_keyboard, vizruzka_keyboard
+from config import TOKEN, REFERAL_REWARD, BOT_NAME, ADMIN, CHANNEL_LINK, CHAT_LINK, ADMIN_USERNAME, OTZIVI_LINK, VIVODI_LINK, BOT_USERNAME, RULETKA_LINK, RULETKA_LINK2, BONUS_REWARD, DAILY_REWARD, CLICKER_REWARD
+from keyboards import start_keyboard, earn_stars_keyboard, profile_keyboard, instruction_keyboard, roulette_keyboard, withdraw_keyboard, admin_confirm_keyboard, top_keyboard, promocode_keyboard, back_menu_keyboard, admin_cmd_keyboard, vizruzka_keyboard, tasks_keyboard, otziv_keyboard
 
 bot = Bot(token=TOKEN)
 dp = Dispatcher(bot)
@@ -41,6 +41,25 @@ CREATE TABLE IF NOT EXISTS withdraw_history (
 )
 """)
 
+cursor.execute("""
+CREATE TABLE IF NOT EXISTS tasks (
+    task_id INTEGER PRIMARY KEY AUTOINCREMENT,
+    chat_id INTEGER,
+    title TEXT,
+    reward INTEGER,
+    active INTEGER DEFAULT 1
+)
+""")
+
+cursor.execute("""
+CREATE TABLE IF NOT EXISTS user_tasks (
+    user_id INTEGER,
+    task_id INTEGER,
+    status TEXT DEFAULT 'pending', -- 'completed', 'skipped', 'pending'
+    PRIMARY KEY (user_id, task_id)
+)
+""")
+
 conn.commit()
 
 promo_active = set()  # Кто нажал кнопку промокодов
@@ -48,6 +67,7 @@ promo_creation = {}   # Для создания новых промокодов 
 promo_deletion = set()
 pending_give_stars = {}   # user_id -> True
 pending_take_stars = {}   # user_id -> True
+task_creation = {}
 
 @dp.message_handler(commands=["start"])
 async def start_command(message: types.Message):
@@ -83,7 +103,8 @@ async def start_command(message: types.Message):
         "✅ <b>Дополнительно:</b>\n"
         "<blockquote><b>— Ежедневные награды и промокоды</b>\n<b>(Профиль)</b>\n"
         "<b>— Выполняй задания\nКрути рулетку и удвой баланс!</b>\n"
-        "<b>— Участвуй в конкурсе на топ</b></blockquote>\n\n"
+        "<b>— Участвуй в конкурсе на топ</b>\n"
+        "<b>— Данный бот создан для тех, у кого\nне получается купить звёзды\nв Telegram Beta.</b></blockquote>\n\n"
         "🔻 <b>Главное меню</b>"
     )
 
@@ -101,7 +122,6 @@ async def admin_command_handler(message: types.Message):
     user_id = message.from_user.id
 
     if user_id not in ADMIN:
-        # Игнорируем — без сообщений, без alert
         return
 
     text = (
@@ -232,11 +252,11 @@ async def daily_bonus_callback(callback_query: types.CallbackQuery):
         return
 
     # Выдаём бонус
-    new_stars = stars + 10000
+    new_stars = stars + {DAILY_REWARD}
     cursor.execute("UPDATE users SET stars = ?, last_bonus = ? WHERE user_id = ?", (new_stars, current_time, user_id))
     conn.commit()
 
-    await callback_query.answer("✅ Ты получил(а) ежедневный бонус в размере 10000 ⭐", show_alert=True)
+    await callback_query.answer(f"✅ Ты получил(а) ежедневный бонус в размере {DAILY_REWARD} ⭐", show_alert=True)
     
 @dp.callback_query_handler(lambda c: c.data.startswith("confirm_withdraw_"))
 async def confirm_withdraw_handler(callback_query: types.CallbackQuery):
@@ -288,8 +308,8 @@ async def confirm_withdraw_handler(callback_query: types.CallbackQuery):
     # Сообщение пользователю
     await bot.send_message(
         user_id,
-        f"🎉 <b><a href=\"{ADMIN_USERNAME}\">Патрик</a></b> вывел тебе твои звёзды: {amount}⭐\n<b><a href=\"{OTZIVI_LINK}\">⭐ Оставить свой отзыв</a></b>",
-        reply_markup=instruction_keyboard(),
+        f"🎉 <b><a href=\"{ADMIN_USERNAME}\">Патрик</a> отправил тебе твой подарок!</b>\nОставь пожалуйста отзыв и скорее\nначинай зарабатывать ⭐ на новый\nподарок💖",
+        reply_markup=otziv_keyboard(),
         parse_mode="HTML"
     )
 
@@ -402,10 +422,10 @@ async def clicker_callback(callback_query: types.CallbackQuery):
         cursor.execute("UPDATE users SET last_click = ? WHERE user_id = ?", (current_time, user_id))
         conn.commit()
 
-        cursor.execute("UPDATE users SET stars = stars + 5000 WHERE user_id = ?", (user_id,))
+        cursor.execute("UPDATE users SET stars = stars + ? WHERE user_id = ?", (CLICKER_REWARD, user_id))
         conn.commit()
 
-        await callback_query.answer("🌟 Ты получил(а) 5000 ⭐!", show_alert=True)
+        await callback_query.answer(f"🌟 Ты получил(а) {CLICKER_REWARD} ⭐!", show_alert=True)
 
 @dp.callback_query_handler(lambda c: c.data == 'profile')
 async def profile_callback(callback_query: types.CallbackQuery):
@@ -427,7 +447,7 @@ async def profile_callback(callback_query: types.CallbackQuery):
         f"✅ Активировали бота: {user[6]}\n"
         f"💰 Баланс: {user[1]} ⭐️ \n\n"
         "⁉️ Как получить ежедневный бонус?\n"
-        "<blockquote>Поставь свою личную ссылку на бота в описание своего тг аккаунта, и получай за это +1 ⭐️ каждый день.</blockquote>\n\n"
+        f"<blockquote>Поставь свою личную ссылку на бота в описание своего тг аккаунта, и получай за это +{BONUS_REWARD} ⭐️ каждый день.</blockquote>\n\n"
         "⬇️  <i>Используй кнопки ниже, чтобы ввести промокод, или получить ежедневный бонус.</i>"
     )
 
@@ -440,16 +460,148 @@ async def profile_callback(callback_query: types.CallbackQuery):
             parse_mode="HTML"
         )
 
+# Обработчик кнопки "📋 Задания"
 @dp.callback_query_handler(lambda c: c.data == 'tasks')
 async def tasks_callback(callback_query: types.CallbackQuery):
-    text = (
-        "🎉 <b>Все задания выполнены!</b>"
-    )
+    user_id = callback_query.from_user.id
 
-    await callback_query.answer(
-        text="🎉 Все задания выполнены!",
-        show_alert=True
+    # Получаем активные задания, которые пользователь еще не выполнил и не пропустил
+    cursor.execute("""
+        SELECT tasks.task_id, tasks.title, tasks.reward, tasks.chat_id 
+        FROM tasks 
+        LEFT JOIN user_tasks ON tasks.task_id = user_tasks.task_id AND user_tasks.user_id = ?
+        WHERE tasks.active = 1 AND (user_tasks.status IS NULL OR user_tasks.status = 'pending')
+    """, (user_id,))
+    tasks = cursor.fetchall()
+
+    if not tasks:
+        text = "🎉 <b>Все задания выполнены или пропущены!</b>"
+        await bot.send_message(
+            chat_id=callback_query.message.chat.id,
+            text=text,
+            reply_markup=back_menu_keyboard(),
+            parse_mode="HTML"
+        )
+        await callback_query.answer()
+        return
+
+    # Формируем текст с заданиями
+    text = "📋 <b>Доступные задания:</b>\n\n"
+    for task_id, title, reward, chat_id in tasks:
+        text += f"🔹 <b>{title}</b>: {reward} ⭐️\n"
+
+    # Отправляем первое задание с клавиатурой
+    first_task = tasks[0]
+    task_id, title, reward, chat_id = first_task
+    text = f"📋 <b>Задание:</b> {title}\n🎁 <b>Награда:</b> {reward} ⭐️\n\nПодпишись на канал/чат и проверь подписку!"
+
+    await bot.send_message(
+        chat_id=callback_query.message.chat.id,
+        text=text,
+        reply_markup=tasks_keyboard(task_id, chat_id),
+        parse_mode="HTML"
     )
+    await callback_query.answer()
+
+# Обработчик проверки подписки
+# Обработчик проверки подписки
+@dp.callback_query_handler(lambda c: c.data.startswith('check_subscription_'))
+async def check_subscription(callback_query: types.CallbackQuery):
+    user_id = callback_query.from_user.id
+    task_id = int(callback_query.data.split('_')[2])
+    chat_id = int(callback_query.data.split('_')[3])
+
+    try:
+        # Проверяем, подписан ли пользователь
+        member = await bot.get_chat_member(chat_id, user_id)
+        if member.status in ['member', 'administrator', 'creator']:
+            # Проверяем, не выполнено ли задание ранее
+            cursor.execute("SELECT status FROM user_tasks WHERE user_id = ? AND task_id = ?", (user_id, task_id))
+            status = cursor.fetchone()
+            if status and status[0] == 'completed':
+                await callback_query.answer("❌ Вы уже выполнили это задание!", show_alert=True)
+                return
+
+            # Получаем текущий баланс
+            cursor.execute("SELECT stars FROM users WHERE user_id = ?", (user_id,))
+            current_stars = cursor.fetchone()[0] or 0  # Если None, ставим 0
+            # Получаем награду за задание
+            cursor.execute("SELECT reward FROM tasks WHERE task_id = ?", (task_id,))
+            reward = cursor.fetchone()[0]
+            # Обновляем баланс, добавляя награду
+            new_stars = current_stars + reward
+            cursor.execute("UPDATE users SET stars = ? WHERE user_id = ?", (new_stars, user_id))
+            cursor.execute("INSERT OR REPLACE INTO user_tasks (user_id, task_id, status) VALUES (?, ?, ?)", 
+                          (user_id, task_id, 'completed'))
+            conn.commit()
+
+            await callback_query.answer(f"✅ Задание выполнено! Вы получили {reward} ⭐️. Новый баланс: {new_stars} ⭐️", show_alert=True)
+            # Повторно вызываем tasks_callback для показа следующего задания
+            await tasks_callback(callback_query)
+        else:
+            await callback_query.answer("❌ Вы не подписаны на канал/чат! Подпишитесь и попробуйте снова.", show_alert=True)
+    except Exception as e:
+        print(f"Ошибка при проверке подписки: {e}")
+        await callback_query.answer("❌ Ошибка при проверке подписки. Попробуйте позже.", show_alert=True)
+
+# Обработчик пропуска задания
+@dp.callback_query_handler(lambda c: c.data.startswith('skip_task_'))
+async def skip_task(callback_query: types.CallbackQuery):
+    user_id = callback_query.from_user.id
+    task_id = int(callback_query.data.split('_')[2])
+
+    # Помечаем задание как пропущенное
+    cursor.execute("INSERT OR REPLACE INTO user_tasks (user_id, task_id, status) VALUES (?, ?, ?)", 
+                  (user_id, task_id, 'skipped'))
+    conn.commit()
+
+    await callback_query.answer("↗️ Задание пропущено и больше не появится.", show_alert=True)
+    # Повторно вызываем tasks_callback для показа следующего задания
+    await tasks_callback(callback_query)
+
+# Команда создания задания для админов
+@dp.message_handler(commands=['create_task'])
+async def create_task_command(message: types.Message):
+    user_id = message.from_user.id
+    print(f"Received /create_task from user_id: {user_id}")  # Отладка
+    if user_id not in ADMIN:
+        print(f"User {user_id} is not admin")  # Отладка
+        await message.answer("❌ У вас нет прав для создания заданий.", reply_markup=back_menu_keyboard())
+        return
+
+    print(f"Starting task creation for user_id: {user_id}")  # Отладка
+    task_creation[user_id] = {"step": 1}
+    await message.answer("✅ Введите супер ID чата/канала (пример: -1234567890000):", parse_mode="HTML")
+
+# Обработчик ввода данных для создания задания
+@dp.message_handler(lambda message: message.from_user.id in task_creation)
+async def process_task_creation(message: types.Message):
+    user_id = message.from_user.id
+    data = task_creation[user_id]
+
+    if data["step"] == 1:
+        try:
+            chat_id = int(message.text.strip())
+            data["chat_id"] = chat_id
+            data["step"] = 2
+            await message.answer("📝 Введите название задания:")
+        except ValueError:
+            await message.answer("❌ Введите корректный ID чата/канала (пример: -1234567890000).")
+    elif data["step"] == 2:
+        data["title"] = message.text.strip()
+        data["step"] = 3
+        await message.answer("⭐ Введите количество звёзд за выполнение задания:")
+    elif data["step"] == 3:
+        try:
+            reward = int(message.text.strip())
+            cursor.execute("INSERT INTO tasks (chat_id, title, reward, active) VALUES (?, ?, ?, 1)",
+                          (data["chat_id"], data["title"], reward))
+            conn.commit()
+            await message.answer(f"✅ Задание <b>{data['title']}</b> создано!\n🎯 Награда: {reward} ⭐ | Чат/канал: {data['chat_id']}", 
+                               parse_mode="HTML", reply_markup=back_menu_keyboard())
+            task_creation.pop(user_id)
+        except ValueError:
+            await message.answer("❌ Введите число звёзд.")
     
 # Рулетка
 @dp.callback_query_handler(lambda c: c.data == 'roulette')
@@ -688,7 +840,7 @@ async def handle_promo_code(message: types.Message):
             cursor.execute("INSERT INTO promo_activations (user_id, code) VALUES (?, ?)", (user_id, code))
             conn.commit()
 
-            await message.answer(f"🎉 Промокод успешно активирован!\nВы получили {reward} ⭐️!")
+            await message.answer(f"✅ Промокод успешно активирован!\nТебе начислено: {reward} ⭐️!")
         else:
             await message.answer(
                 "❌ Промокод не действителен или закончились использования",
