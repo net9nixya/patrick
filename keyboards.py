@@ -26,6 +26,9 @@ def start_keyboard():
         InlineKeyboardButton("🏆 Топ", callback_data="top"),
         InlineKeyboardButton("📧 Отзывы", url=f"{OTZIVI_LINK}")
     )
+    keyboard.add(
+        InlineKeyboardButton("🛡️ Тех.Поддержка", callback_data="Tex_Pod"),
+    )
 
     return keyboard
 
@@ -123,6 +126,9 @@ def withdraw_keyboard():
         ],
         [
             InlineKeyboardButton("100.000⭐", callback_data="withdraw_100000_1"),
+        ],
+        [
+            InlineKeyboardButton("NFT 🪐 (10.000.000⭐️)", callback_data="withdraw_10000000_1"),
         ],
         [
             InlineKeyboardButton("Telegram Premium 3мес. (1000⭐️)", callback_data="withdraw_premium"),

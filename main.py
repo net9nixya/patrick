@@ -1,7 +1,10 @@
 import sqlite3
 import time
+import subprocess
+import os
+import shutil
 from aiogram import Bot, Dispatcher, executor, types
-from config import TOKEN, REFERAL_REWARD, BOT_NAME, ADMIN, CHANNEL_LINK, CHAT_LINK, ADMIN_USERNAME, OTZIVI_LINK, VIVODI_LINK, BOT_USERNAME, RULETKA_LINK, RULETKA_LINK2, BONUS_REWARD, DAILY_REWARD, CLICKER_REWARD
+from config import TOKEN, REFERAL_REWARD, BOT_NAME, ADMIN, CHANNEL_LINK, CHAT_LINK, ADMIN_USERNAME, ADMIN_USERNAME2, OTZIVI_LINK, VIVODI_LINK, BOT_USERNAME, RULETKA_LINK, RULETKA_LINK2, BONUS_REWARD, DAILY_REWARD, CLICKER_REWARD
 from keyboards import start_keyboard, earn_stars_keyboard, profile_keyboard, instruction_keyboard, roulette_keyboard, withdraw_keyboard, admin_confirm_keyboard, top_keyboard, promocode_keyboard, back_menu_keyboard, admin_cmd_keyboard, vizruzka_keyboard, tasks_keyboard, otziv_keyboard
 
 bot = Bot(token=TOKEN)
@@ -68,6 +71,7 @@ promo_deletion = set()
 pending_give_stars = {}   # user_id -> True
 pending_take_stars = {}   # user_id -> True
 task_creation = {}
+withdraw_messages = {}
 
 @dp.message_handler(commands=["start"])
 async def start_command(message: types.Message):
@@ -117,6 +121,23 @@ async def start_command(message: types.Message):
             parse_mode="HTML"
         )
         
+# Обработчик кнопки "🛡️ Тех.Поддержка"
+@dp.callback_query_handler(lambda c: c.data == "Tex_Pod")
+async def tech_support_callback(callback_query: types.CallbackQuery):
+    text = (
+        f"Чтобы обратиться в поддержку, напишите "
+        f"<a href=\"{ADMIN_USERNAME}\">@Патрик</a> "
+        f"или <a href=\"{ADMIN_USERNAME2}\">@Патрик Бизнесмен</a>, "
+        f"если первый не отвечает."
+    )
+    await bot.send_message(
+        chat_id=callback_query.message.chat.id,
+        text=text,
+        parse_mode="HTML",
+        reply_markup=back_menu_keyboard()
+    )
+    await callback_query.answer()
+        
 @dp.message_handler(commands=["adm"])
 async def admin_command_handler(message: types.Message):
     user_id = message.from_user.id
@@ -130,8 +151,13 @@ async def admin_command_handler(message: types.Message):
         "- <code>создать промокод</code>\n"
         "- <code>удалить промокод</code>\n"
         "- <code>активные промокоды</code>\n"
-        "- <code>выдать звезды [ID]</code>\n"
-        "- <code>забрать звезды [ID]</code>\n"
+        "- <code>выдать звезды </code>[ID]\n"
+        "- <code>забрать звезды </code>[ID]\n"
+        "- <code>/adm</code>\n"
+        "- <code>/create_task</code>\n"
+        "- <code>/update_bot</code>\n"
+        "- <code>/restartbot</code>\n"
+        "- <code>профиль </code>[ID]\n"
         "</blockquote>"
     )
 
@@ -264,54 +290,68 @@ async def confirm_withdraw_handler(callback_query: types.CallbackQuery):
     user_id = int(data[2])
     amount = int(data[3])
 
-    # Подтверждаем вывод — ничего не возвращаем, просто сбрасываем флаг
-    cursor.execute("UPDATE users SET withdrawal_request = 0 WHERE user_id = ?", (user_id,))
+    # Проверяем, не обработана ли заявка
+    cursor.execute("SELECT stars, username, withdrawal_request FROM users WHERE user_id = ?", (user_id,))
+    result = cursor.fetchone()
+    if not result:
+        await callback_query.answer("❌ Пользователь не найден.", show_alert=True)
+        return
+
+    stars, username, withdrawal_request = result
+
+    if not withdrawal_request:
+        await callback_query.answer("❌ Эта заявка уже была обработана.", show_alert=True)
+        return
+
+    if stars < amount:
+        await callback_query.answer("❌ У пользователя недостаточно звёзд.", show_alert=True)
+        return
+
+    # Списываем звезды и сбрасываем флаг
+    cursor.execute("UPDATE users SET stars = stars - ?, withdrawal_request = 0 WHERE user_id = ?", (amount, user_id))
     conn.commit()
 
-    await callback_query.answer("✅ Подтверждено: звезды выведены.")
-
-    # Получаем username
-    cursor.execute("SELECT username FROM users WHERE user_id = ?", (user_id,))
-    user = cursor.fetchone()
-    username = user[0] if user else "Без ника"
-
-    # Добавляем запись в историю
+    # Добавляем в историю выводов
     timestamp = int(time.time())
     cursor.execute(
         "INSERT INTO withdraw_history (user_id, amount, timestamp) VALUES (?, ?, ?)",
         (user_id, amount, timestamp)
     )
     conn.commit()
-
-    # Получаем номер этого запроса (ID автоинкремент)
     request_id = cursor.lastrowid
 
-    # Сообщение в канал
+    # Уведомление пользователю
+    await bot.send_message(
+        user_id,
+        f"🎉 <b><a href=\"https://t.me/{ADMIN_USERNAME}\">Патрик</a></b> вывел тебе твои звёзды: {amount}⭐\n"
+        f"<b><a href=\"{OTZIVI_LINK}\">⭐ Оставить свой отзыв</a></b>",
+        reply_markup=instruction_keyboard(),
+        parse_mode="HTML"
+    )
+
+    # Уведомление в канал
     text = f"""
-✅ <b>Запрос на вывод №{request_id} </b>
+✅ Запрос на вывод №{request_id}
 
 👤 Пользователь: {username} | ID: {user_id}
-💫 Количество: {amount}⭐️
+💫 Количество: {amount}⭐️ [💝]
 
-🔄 Статус: <b>Подарок отправлен</b> 🎁
+🔄 Статус: Подарок отправлен 🎁
 
 <a href="{CHANNEL_LINK}">Основной канал</a> | <a href="{CHAT_LINK}">Чат</a> | <a href="https://t.me/{BOT_USERNAME}">Бот</a>
 """
+    await bot.send_message(VIVODI_LINK, text, parse_mode="HTML", disable_web_page_preview=True)
 
-    await bot.send_message(
-        chat_id=VIVODI_LINK,
-        text=text,
-        disable_web_page_preview=True,
-        parse_mode="HTML"
-    )
+    # Удаляем сообщения у всех админов
+    if user_id in withdraw_messages:
+        for admin_id, message_id in withdraw_messages[user_id]:
+            try:
+                await bot.delete_message(admin_id, message_id)
+            except Exception as e:
+                print(f"Ошибка удаления сообщения у админа {admin_id}: {e}")
+        del withdraw_messages[user_id]
 
-    # Сообщение пользователю
-    await bot.send_message(
-        user_id,
-        f"🎉 <b><a href=\"{ADMIN_USERNAME}\">Патрик</a> отправил тебе твой подарок!</b>\nОставь пожалуйста отзыв и скорее\nначинай зарабатывать ⭐ на новый\nподарок💖",
-        reply_markup=otziv_keyboard(),
-        parse_mode="HTML"
-    )
+    await callback_query.answer("✅ Подтверждено: звезды выведены.")
 
 @dp.callback_query_handler(lambda c: c.data.startswith("reject_withdraw_"))
 async def reject_withdraw_handler(callback_query: types.CallbackQuery):
@@ -319,18 +359,70 @@ async def reject_withdraw_handler(callback_query: types.CallbackQuery):
     user_id = int(data[2])
     amount = int(data[3])
 
-    # Отклоняем — возвращаем звезды и сбрасываем флаг
+    # Проверяем, не обработана ли заявка
+    cursor.execute("SELECT withdrawal_request FROM users WHERE user_id = ?", (user_id,))
+    result = cursor.fetchone()
+    if not result or not result[0]:
+        await callback_query.answer("❌ Эта заявка уже была обработана.", show_alert=True)
+        return
+
+    # Возвращаем звезды и сбрасываем флаг
     cursor.execute("UPDATE users SET stars = stars + ?, withdrawal_request = 0 WHERE user_id = ?", (amount, user_id))
     conn.commit()
 
-    await callback_query.answer("❌ Запрос отклонен, звезды возвращены.")
+    # Уведомление пользователю
     await bot.send_message(user_id, f"😔 Ваш запрос на вывод {amount} ⭐️ был отклонен.\nЗвезды возвращены на баланс.")
+
+    # Удаляем сообщения у всех админов
+    if user_id in withdraw_messages:
+        for admin_id, message_id in withdraw_messages[user_id]:
+            try:
+                await bot.delete_message(admin_id, message_id)
+            except Exception as e:
+                print(f"Ошибка удаления сообщения у админа {admin_id}: {e}")
+        del withdraw_messages[user_id]
+
+    await callback_query.answer("❌ Запрос отклонен, звезды возвращены.")
+
+# Обработчик кнопки "Назад в меню" для заявок
+@dp.callback_query_handler(lambda c: c.data == "back_to_menu")
+async def back_to_menu(callback_query: types.CallbackQuery):
+    user_id = callback_query.from_user.id
+    if user_id not in ADMIN:
+        await start_command(callback_query.message)
+        return
+
+    # Проверяем, есть ли связанные заявки
+    for request_user_id, messages in list(withdraw_messages.items()):
+        for admin_id, message_id in messages:
+            if admin_id == user_id and message_id == callback_query.message.message_id:
+                # Находим данные заявки
+                data = callback_query.data
+                cursor.execute("SELECT withdrawal_request, stars FROM users WHERE user_id = ?", (request_user_id,))
+                result = cursor.fetchone()
+                if result and result[0]:
+                    amount = int(callback_query.message.text.split("Подарок: ")[1].split(" ")[0])
+                    # Возвращаем звезды и сбрасываем флаг
+                    cursor.execute("UPDATE users SET stars = stars + ?, withdrawal_request = 0 WHERE user_id = ?", (amount, request_user_id))
+                    conn.commit()
+                    # Уведомление пользователю
+                    await bot.send_message(request_user_id, f"😔 Ваш запрос на вывод {amount} ⭐️ был отклонен.\nЗвезды возвращены на баланс.")
+                    # Удаляем сообщения у всех админов
+                    for admin_id, msg_id in messages:
+                        try:
+                            await bot.delete_message(admin_id, msg_id)
+                        except Exception as e:
+                            print(f"Ошибка удаления сообщения у админа {admin_id}: {e}")
+                    del withdraw_messages[request_user_id]
+                break
+
+    await start_command(callback_query.message)
 
 @dp.callback_query_handler(lambda c: c.data == 'earn_stars')
 async def earn_stars_callback(callback_query: types.CallbackQuery):
     user_id = callback_query.from_user.id
     text = (
-        "🎉 <b>Приглашай друзей и получай по 3 ⭐️ от</b>\n<b>Патрика за каждого, кто активирует бота по</b>\n<b>твоей ссылке!</b>\n\n"
+        f"🎉 <b>Приглашай друзей и получай по {REFERAL_REWARD} ⭐️ от</b>\n<b>Патрика за каждого, кто активирует бота по</b>\n<b>твоей ссылке!</b>\n\n"
         "🔗 <u><b>Твоя личная ссылка</b> (нажми чтобы скопировать)</u>:\n\n"
         f"<code>https://t.me/{BOT_NAME}?start={user_id}</code>\n\n"
         "🚀 <b>Как набрать много переходов по ссылке?</b>\n"
@@ -503,7 +595,6 @@ async def tasks_callback(callback_query: types.CallbackQuery):
     )
     await callback_query.answer()
 
-# Обработчик проверки подписки
 # Обработчик проверки подписки
 @dp.callback_query_handler(lambda c: c.data.startswith('check_subscription_'))
 async def check_subscription(callback_query: types.CallbackQuery):
@@ -724,7 +815,7 @@ async def instruction_callback(callback_query: types.CallbackQuery):
         "• Поделись ссылкой в истории и в своем ТГ\nили в Telegram-канале 📣\n"
         "• Оставь её в комментариях или чатах 🗨️\n"
         "• Распространяй ссылку в соцсетях: TikTok,\nInstagram, WhatsApp и других 🌍</blockquote>\n\n"
-        "🤩 <b>Способы, которыми можно заработать\nдо 1000 звёзд в день:</b>\n\n"
+        "🤩 <b>Способы, которыми можно заработать\nдо 100000 звёзд в день:</b>\n\n"
         "1️⃣ <b>Первый способ:</b>\n"
         "<blockquote>1. Заходим в TikTok или Лайк\n"
         "2. Ищем видео по запросам: звёзды\nтелеграм, подарки телеграм, тг старсы и\nт.п.\n"
@@ -763,7 +854,7 @@ async def withdraw_callback(callback_query: types.CallbackQuery):
     text = (
         f"💰<b>Баланс:</b> {stars} ⭐️\n\n"
         f"‼️<b>Для вывода требуется:</b>\n"
-        f"— минимум 5 приглашенных друзей, активировавших бота\n"
+        f"— минимум 1 приглашенного друга, который активировал бота\n"
         f"— Быть подписанным на наш <a href=\"{CHANNEL_LINK}\">канал</a>\n\n"
         f"<blockquote>✅ Вывод в течении 24-х часов.</blockquote>\n\n"
         f"<b>Выбери количество звезд и подарок, которым ты хочешь их получить:</b>"
@@ -943,12 +1034,15 @@ async def list_promo(message: types.Message):
 
 #________________________________________________________________________________________________________________________
 
+# Обработчик вывода звезд
 @dp.callback_query_handler(lambda c: c.data.startswith('withdraw_'))
 async def process_withdraw(callback_query: types.CallbackQuery):
     user_id = callback_query.from_user.id
     username = callback_query.from_user.username or "Без ника"
     data = callback_query.data.split('_')
     amount_str = data[1]
+    gift_type = data[2] if len(data) > 2 else "1"
+
     try:
         amount = int(amount_str)
     except ValueError:
@@ -968,9 +1062,9 @@ async def process_withdraw(callback_query: types.CallbackQuery):
         )
         return
 
-    if referals < 0:
+    if referals < 1:
         await callback_query.answer(
-            "❌ Для вывода необходимо пригласить минимум 5 друзей, которые активировали бота!",
+            "❌ Для вывода необходимо пригласить минимум 1 друга, который активировал бота!",
             show_alert=True
         )
         return
@@ -986,23 +1080,182 @@ async def process_withdraw(callback_query: types.CallbackQuery):
     cursor.execute("UPDATE users SET stars = ?, withdrawal_request = 1 WHERE user_id = ?", (new_stars, user_id))
     conn.commit()
 
+    # Определяем, что выводить: количество звезд или название подарка
+    if callback_query.data == "withdraw_10000000_1":
+        gift_display = "NFT"
+    elif callback_query.data == "withdraw_premium" and amount == 1000:
+        gift_display = "Премиум 3мес"
+    elif callback_query.data == "withdraw_premium" and amount == 1700:
+        gift_display = "Премиум 6мес"
+    else:
+        gift_display = f"{amount} ⭐️"
+
     text = (
-        f"<b>@{username}</b> отправил подтверждение на вывод своих звёзд!\n\n"
-        f"💎 <b>Сколько нужно вывести:</b> {amount} ⭐️"
+        f"<b>@{username}</b> отправил подтверждение на вывод!\n\n"
+        f"💎 <b>Подарок:</b> {gift_display}"
     )
 
+    # Сохраняем message_id для каждого админа
+    withdraw_messages[user_id] = []
     for admin_id in ADMIN:
-        await bot.send_message(
-            chat_id=admin_id,
-            text=text,
-            reply_markup=admin_confirm_keyboard(user_id, amount),
-            parse_mode="HTML"
-        )
+        try:
+            message = await bot.send_message(
+                chat_id=admin_id,
+                text=text,
+                reply_markup=admin_confirm_keyboard(user_id, amount),
+                parse_mode="HTML"
+            )
+            withdraw_messages[user_id].append((admin_id, message.message_id))
+        except Exception as e:
+            print(f"Ошибка отправки сообщения админу {admin_id}: {e}")
 
     await callback_query.answer(
         "✅ Заявка на вывод отправлена администратору!",
         show_alert=True
     )
+    
+# Команда обновления бота для админов
+@dp.message_handler(commands=['update_bot'])
+async def update_bot_command(message: types.Message):
+    user_id = message.from_user.id
+    if user_id not in ADMIN:
+        await message.answer("❌ У вас нет прав для обновления бота.", reply_markup=back_menu_keyboard())
+        return
+
+    await message.answer("⏳ Начинаю обновление бота...")
+
+    try:
+        # Удаляем users.db
+        db_path = "users.db"
+        if os.path.exists(db_path):
+            os.remove(db_path)
+            db_message = "✅ Файл users.db удален."
+        else:
+            db_message = "ℹ️ Файл users.db не найден."
+
+        # Удаляем папку __pycache__
+        pycache_path = "__pycache__"
+        if os.path.exists(pycache_path):
+            shutil.rmtree(pycache_path)
+            pycache_message = "✅ Папка __pycache__ удалена."
+        else:
+            pycache_message = "ℹ️ Папка __pycache__ не найдена."
+
+        # Выполняем git pull
+        result = subprocess.run(['git', 'pull'], capture_output=True, text=True, check=True)
+        git_output = result.stdout + result.stderr
+
+        # Формируем сообщение с результатом
+        text = (
+            f"✅ Обновление завершено!\n"
+            f"{db_message}\n"
+            f"{pycache_message}\n"
+            f"📜 Результат git pull:\n{git_output}\n"
+            f"🔄 Бот будет перезапущен..."
+        )
+        await message.answer(text, parse_mode="HTML")
+
+        # Завершаем процесс для перезапуска
+        os._exit(0)
+
+    except subprocess.CalledProcessError as e:
+        error_message = f"❌ Ошибка при выполнении git pull:\n{e.output}"
+        await message.answer(error_message, parse_mode="HTML")
+    except Exception as e:
+        error_message = f"❌ Ошибка: {str(e)}"
+        await message.answer(error_message, parse_mode="HTML") 
+        
+# Команда перезапуска бота для админов
+@dp.message_handler(commands=['restartbot'])
+async def restart_bot_command(message: types.Message):
+    user_id = message.from_user.id
+    if user_id not in ADMIN:
+        await message.answer("❌ У вас нет прав для перезапуска бота.", reply_markup=back_menu_keyboard())
+        return
+
+    await message.answer("⏳ Перезапускаю бота...")
+
+    try:
+        # Завершаем процесс для перезапуска
+        await message.answer("✅ Бот будет перезапущен.")
+        os._exit(0)
+    except Exception as e:
+        error_message = f"❌ Ошибка при перезапуске: {str(e)}"
+        await message.answer(error_message, parse_mode="HTML")
+        
+# Команда просмотра профиля пользователя для админов
+@dp.message_handler(lambda message: message.text.lower().startswith('профиль '))
+async def profile_user_command(message: types.Message):
+    if message.from_user.id not in ADMIN:
+        await message.answer("❌ У вас нет прав для просмотра профилей.", reply_markup=back_menu_keyboard())
+        return
+
+    try:
+        # Извлекаем user_id из команды (например, "профиль 123456789" -> 123456789)
+        parts = message.text.strip().split()
+        if len(parts) < 2:
+            await message.answer("❌ Укажите ID пользователя. Пример: <code>профиль 123456789</code>", parse_mode="HTML")
+            return
+        target_id = int(parts[1])
+
+        # Получаем данные пользователя
+        cursor.execute("SELECT * FROM users WHERE user_id = ?", (target_id,))
+        user = cursor.fetchone()
+        if not user:
+            await message.answer("❌ Пользователь с таким ID не найден.", reply_markup=back_menu_keyboard())
+            return
+
+        user_id, stars, last_click, referals, username, admin, activated, withdrawal_request, last_bonus = user
+
+        # Получаем данные о заданиях
+        cursor.execute("SELECT status, COUNT(*) FROM user_tasks WHERE user_id = ? GROUP BY status", (target_id,))
+        tasks_stats = cursor.fetchall()
+        completed_tasks = sum(count for status, count in tasks_stats if status == 'completed')
+        skipped_tasks = sum(count for status, count in tasks_stats if status == 'skipped')
+        pending_tasks = sum(count for status, count in tasks_stats if status == 'pending')
+
+        # Получаем данные о выводах
+        cursor.execute("SELECT COUNT(*), SUM(amount) FROM withdraw_history WHERE user_id = ?", (target_id,))
+        withdraw_stats = cursor.fetchone()
+        withdraw_count = withdraw_stats[0] or 0
+        withdraw_total = withdraw_stats[1] or 0
+
+        # Форматируем время последнего бонуса и клика
+        current_time = int(time.time())
+        last_bonus_str = "Никогда" if not last_bonus else f"{(current_time - last_bonus) // 3600} часов назад"
+        last_click_str = "Никогда" if not last_click else f"{(current_time - last_click) // 3600} часов назад"
+
+        # Формируем текст профиля
+        text = (
+            f"👤 <b>Профиль пользователя</b>\n"
+            f"──────────────\n"
+            f"🆔 <b>ID:</b> {user_id}\n"
+            f"📛 <b>Имя:</b> @{username if username else 'Без ника'}\n"
+            f"💰 <b>Баланс:</b> {stars} ⭐️\n"
+            f"👥 <b>Приглашено друзей:</b> {referals}\n"
+            f"✅ <b>Активировал бота:</b> {'Да' if activated else 'Нет'}\n"
+            f"👑 <b>Админ:</b> {'Да' if admin else 'Нет'}\n"
+            f"📩 <b>Заявка на вывод:</b> {'Есть' if withdrawal_request else 'Нет'}\n"
+            f"🎁 <b>Последний ежедневный бонус:</b> {last_bonus_str}\n"
+            f"🌟 <b>Последний клик:</b> {last_click_str}\n"
+            f"──────────────\n"
+            f"📋 <b>Задания:</b>\n"
+            f"  🔹 Выполнено: {completed_tasks}\n"
+            f"  🔹 Пропущено: {skipped_tasks}\n"
+            f"  🔹 В ожидании: {pending_tasks}\n"
+            f"──────────────\n"
+            f"💸 <b>Выводы:</b>\n"
+            f"  🔹 Количество: {withdraw_count}\n"
+            f"  🔹 Общая сумма: {withdraw_total} ⭐️\n"
+            f"──────────────"
+        )
+
+        await message.answer(text, parse_mode="HTML", reply_markup=back_menu_keyboard())
+
+    except ValueError:
+        await message.answer("❌ Неверный формат ID. Пример: <code>профиль 123456789</code>", parse_mode="HTML")
+    except Exception as e:
+        await message.answer(f"❌ Ошибка: {str(e)}", reply_markup=back_menu_keyboard())
 
 if __name__ == "__main__":
     executor.start_polling(dp, skip_updates=True)

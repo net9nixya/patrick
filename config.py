@@ -1,10 +1,11 @@
 # config.py
 
 TOKEN = "2200101606:AAEjw5QCIlxeOfMfNOxYdnhFHfKSMW2tfp4/test" # Токен бота из @BotFather
-ADMIN = [2200694969, 5000998761]  # Список айди админов
+ADMIN = [2200694969, 5000851791]  # Список айди админов
 
 BOT_NAME = "patrickstars2bot" # (Без @) - (Юзернейм бота)
 ADMIN_USERNAME = "t.me/patrickstarsagent" # ЮзерНейм админа бота
+ADMIN_USERNAME2 = "t.me/PatrickBiznes" # ЮзерНейм второго админа бота
 
 CHANNEL_LINK = "t.me/patrickstarsfarm" # C http - без http (Ссылка на канал)
 CHAT_LINK = "t.me/patrickstars_chat" # C http - без http (Ссылка на чат)
