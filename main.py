@@ -23,7 +23,8 @@ CREATE TABLE IF NOT EXISTS users (
     admin INTEGER DEFAULT 0,
     activated INTEGER DEFAULT 0,
     withdrawal_request INTEGER DEFAULT 0,
-    last_bonus INTEGER DEFAULT 0
+    last_bonus INTEGER DEFAULT 0,
+    banned INTEGER DEFAULT 0
 )
 """)
 
@@ -63,6 +64,11 @@ CREATE TABLE IF NOT EXISTS user_tasks (
 )
 """)
 
+try:
+    cursor.execute("ALTER TABLE users ADD COLUMN banned INTEGER DEFAULT 0")
+except sqlite3.OperationalError:
+    pass
+
 conn.commit()
 
 promo_active = set()  # Кто нажал кнопку промокодов
@@ -97,13 +103,13 @@ async def start_command(message: types.Message):
             conn.commit()
 
             try:
-                await bot.send_message(referer_id, f"✅ ты заработал(а) +{REFERAL_REWARD}⭐️, кто-то активировал бота по твоей\nссылке\nТак держать! 🎉")
+                await bot.send_message(referer_id, f"✅ ты заработал(а) +{REFERAL_REWARD}⭐️, кто-то активировал бота по твоей ссылке Так держать! 🎉")
             except:
                 pass
 
     text = (
         "1️⃣ <b>Получи свою личную ссылку —</b> жми «⭐️\n Заработать звезды»\n"
-        "2️⃣ <b>Приглашай друзей — 25000</b>⭐️ за каждого!\n\n"
+        f"2️⃣ <b>Приглашай друзей — {REFERAL_REWARD}</b>⭐️ за каждого!\n\n"
         "✅ <b>Дополнительно:</b>\n"
         "<blockquote><b>— Ежедневные награды и промокоды</b>\n<b>(Профиль)</b>\n"
         "<b>— Выполняй задания\nКрути рулетку и удвой баланс!</b>\n"
@@ -137,6 +143,83 @@ async def tech_support_callback(callback_query: types.CallbackQuery):
         reply_markup=back_menu_keyboard()
     )
     await callback_query.answer()
+    
+# Фильтр для игнорирования сообщений от забаненных пользователей
+@dp.message_handler(content_types=types.ContentType.ANY, priority=100)
+async def ignore_banned_users_messages(message: types.Message):
+    user_id = message.from_user.id
+    cursor.execute("SELECT banned FROM users WHERE user_id = ?", (user_id,))
+    user = cursor.fetchone()
+    if user and user[0]:  # Если пользователь забанен (banned = 1)
+        return  # Игнорируем сообщение
+    
+@dp.callback_query_handler(lambda c: True, priority=100)
+async def ignore_banned_users_callbacks(callback_query: types.CallbackQuery):
+    user_id = callback_query.from_user.id
+    cursor.execute("SELECT banned FROM users WHERE user_id = ?", (user_id,))
+    user = cursor.fetchone()
+    if user and user[0]:  # Если пользователь забанен (banned = 1)
+        await callback_query.answer()  # Подтверждаем callback, но ничего не делаем
+        return
+    
+@dp.message_handler(commands=['banbot'])
+async def ban_bot_command(message: types.Message):
+    if message.chat.type != "private":
+        return  # Игнорируем команду в группах
+
+    user_id = message.from_user.id
+    if user_id not in ADMIN:
+        await message.answer("❌ У вас нет прав для бана пользователей.", reply_markup=back_menu_keyboard())
+        return
+
+    try:
+        # Извлекаем user_id из команды (например, /banbot 123456789)
+        parts = message.text.strip().split()
+        if len(parts) < 2:
+            await message.answer("❌ Укажите ID пользователя. Пример: <code>/banbot 123456789</code>", parse_mode="HTML")
+            return
+        target_id = int(parts[1])
+
+        # Проверяем, существует ли пользователь
+        cursor.execute("SELECT username, banned FROM users WHERE user_id = ?", (target_id,))
+        user = cursor.fetchone()
+        if not user:
+            await message.answer("❌ Пользователь с таким ID не найден.", reply_markup=back_menu_keyboard())
+            return
+
+        username, banned = user
+        if banned:
+            await message.answer(f"❌ Пользователь @{username or 'Без ника'} уже забанен.", reply_markup=back_menu_keyboard())
+            return
+
+        # Баним пользователя
+        cursor.execute("UPDATE users SET banned = 1 WHERE user_id = ?", (target_id,))
+        conn.commit()
+
+        # Уведомление админу
+        await message.answer(
+            f"✅ Пользователь @{username or 'Без ника'} (ID: {target_id}) забанен.",
+            parse_mode="HTML",
+            reply_markup=back_menu_keyboard()
+        )
+
+        # Уведомление пользователю
+        try:
+            await bot.send_message(
+                target_id,
+                "🚫 Вы были забанены в боте и больше не можете с ним взаимодействовать.",
+                parse_mode="HTML"
+            )
+        except Exception:
+            await message.answer(
+                f"ℹ️ Не удалось уведомить пользователя @{username or 'Без ника'} (возможно, он заблокировал бота).",
+                parse_mode="HTML"
+            )
+
+    except ValueError:
+        await message.answer("❌ Неверный формат ID. Пример: <code>/banbot 123456789</code>", parse_mode="HTML")
+    except Exception as e:
+        await message.answer(f"❌ Ошибка: {str(e)}", reply_markup=back_menu_keyboard())
         
 @dp.message_handler(commands=["adm"])
 async def admin_command_handler(message: types.Message):
@@ -157,6 +240,7 @@ async def admin_command_handler(message: types.Message):
         "- <code>/create_task</code>\n"
         "- <code>/update_bot</code>\n"
         "- <code>/restartbot</code>\n"
+        "- <code>/banbot </code>[ID]\n"
         "- <code>профиль </code>[ID]\n"
         "</blockquote>"
     )
@@ -855,7 +939,8 @@ async def withdraw_callback(callback_query: types.CallbackQuery):
         f"💰<b>Баланс:</b> {stars} ⭐️\n\n"
         f"‼️<b>Для вывода требуется:</b>\n"
         f"— минимум 1 приглашенного друга, который активировал бота\n"
-        f"— Быть подписанным на наш <a href=\"{CHANNEL_LINK}\">канал</a>\n\n"
+        f"— Быть подписанным на наш <a href=\"{CHANNEL_LINK}\">канал</a>\n"
+        f"— Обязательно нужно иметь @username\n\n"
         f"<blockquote>✅ Вывод в течении 24-х часов.</blockquote>\n\n"
         f"<b>Выбери количество звезд и подарок, которым ты хочешь их получить:</b>"
     )
@@ -1032,8 +1117,6 @@ async def list_promo(message: types.Message):
 
     await message.answer(text, parse_mode="HTML")
 
-#________________________________________________________________________________________________________________________
-
 # Обработчик вывода звезд
 @dp.callback_query_handler(lambda c: c.data.startswith('withdraw_'))
 async def process_withdraw(callback_query: types.CallbackQuery):
@@ -1082,10 +1165,10 @@ async def process_withdraw(callback_query: types.CallbackQuery):
 
     # Определяем, что выводить: количество звезд или название подарка
     if callback_query.data == "withdraw_10000000_1":
-        gift_display = "NFT"
-    elif callback_query.data == "withdraw_premium" and amount == 1000:
+        gift_display = "NFT Подарок 👑"
+    elif callback_query.data == "withdraw_premium3mes" and amount == 1000:
         gift_display = "Премиум 3мес"
-    elif callback_query.data == "withdraw_premium" and amount == 1700:
+    elif callback_query.data == "withdraw_premium6mes" and amount == 1700:
         gift_display = "Премиум 6мес"
     else:
         gift_display = f"{amount} ⭐️"
@@ -1256,6 +1339,12 @@ async def profile_user_command(message: types.Message):
         await message.answer("❌ Неверный формат ID. Пример: <code>профиль 123456789</code>", parse_mode="HTML")
     except Exception as e:
         await message.answer(f"❌ Ошибка: {str(e)}", reply_markup=back_menu_keyboard())
+        
+# Обработчик для игнорирования всех команд в группах
+@dp.message_handler(regexp_commands=r'/.+')
+async def ignore_commands_in_groups(message: types.Message):
+    if message.chat.type != "private":
+        return
 
 if __name__ == "__main__":
     executor.start_polling(dp, skip_updates=True)

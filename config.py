@@ -15,7 +15,7 @@ BOT_USERNAME = "t.me/patrickstars2bot" # ЮзерНейм бота
 RULETKA_LINK = "-1002200334562" 
 RULETKA_LINK2 = "@patrickstars_game"
 
-BONUS_REWARD = 10000 # Сколько звёзд даётся за ежедневный бонус
+BONUS_REWARD = 20000 # Сколько звёзд даётся за ежедневный бонус
 DAILY_REWARD = 10000 #
 CLICKER_REWARD = 5000 # Сколько звёзд даётся за один клик
 REFERAL_REWARD = 25000  # Сколько звёзд даётся за одного реферала

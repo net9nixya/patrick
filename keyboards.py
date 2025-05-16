@@ -86,10 +86,18 @@ def roulette_keyboard():
         InlineKeyboardButton("50⭐️", callback_data="bet_50"),
         InlineKeyboardButton("100⭐️", callback_data="bet_100"),
         InlineKeyboardButton("500⭐️", callback_data="bet_500"),
-        InlineKeyboardButton("1000⭐️", callback_data="bet_1000"),
-        InlineKeyboardButton("2500⭐️", callback_data="bet_2500"),
-        InlineKeyboardButton("5000⭐️", callback_data="bet_5000"),
-        InlineKeyboardButton("10000⭐️", callback_data="bet_10000"),
+        InlineKeyboardButton("1.000⭐️", callback_data="bet_1000"),
+        InlineKeyboardButton("2.500⭐️", callback_data="bet_2500"),
+        InlineKeyboardButton("5.000⭐️", callback_data="bet_5000"),
+        InlineKeyboardButton("10.000⭐️", callback_data="bet_10000"),
+        InlineKeyboardButton("50.000⭐️", callback_data="bet_50000"),
+        InlineKeyboardButton("100.000⭐️", callback_data="bet_100000"),
+        InlineKeyboardButton("150.000⭐️", callback_data="bet_150000"),
+        InlineKeyboardButton("500.000⭐️", callback_data="bet_500000"),
+        InlineKeyboardButton("1.000.000⭐️", callback_data="bet_1000000"),
+        [
+        InlineKeyboardButton("10.000.000⭐️", callback_data="bet_10000000"),
+        ]
     )
     keyboard.add(
         InlineKeyboardButton("⬅️ Назад в меню", callback_data="back_to_menu")
@@ -131,10 +139,10 @@ def withdraw_keyboard():
             InlineKeyboardButton("NFT 🪐 (10.000.000⭐️)", callback_data="withdraw_10000000_1"),
         ],
         [
-            InlineKeyboardButton("Telegram Premium 3мес. (1000⭐️)", callback_data="withdraw_premium"),
+            InlineKeyboardButton("Telegram Premium 3мес. (1000⭐️)", callback_data="withdraw_premium3mes"),
         ],
         [
-            InlineKeyboardButton("Telegram Premium 6мес. (1700⭐️)", callback_data="withdraw_premium"),
+            InlineKeyboardButton("Telegram Premium 6мес. (1700⭐️)", callback_data="withdraw_premium6mes"),
         ],
     ])
     return keyboard
@@ -169,7 +177,7 @@ def back_menu_keyboard():
 def admin_cmd_keyboard():
     keyboard = InlineKeyboardMarkup(inline_keyboard=[
         [
-            InlineKeyboardButton("Выгрузка", callback_data=f"vizruzka"),
+            InlineKeyboardButton("🔄️ Выгрузка", callback_data=f"vizruzka"),
             InlineKeyboardButton("⬅️ Назад в меню", callback_data="back_to_menu"),
         ]
     ])
