@@ -1339,12 +1339,6 @@ async def profile_user_command(message: types.Message):
         await message.answer("❌ Неверный формат ID. Пример: <code>профиль 123456789</code>", parse_mode="HTML")
     except Exception as e:
         await message.answer(f"❌ Ошибка: {str(e)}", reply_markup=back_menu_keyboard())
-        
-# Обработчик для игнорирования всех команд в группах
-@dp.message_handler(commands=['start', 'banbot', 'adm', 'create_task', 'update_bot', 'restartbot'])
-async def ignore_commands_in_groups(message: types.Message):
-    if message.chat.type != "private":
-        return
 
 if __name__ == "__main__":
     executor.start_polling(dp, skip_updates=True)
