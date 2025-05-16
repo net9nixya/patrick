@@ -362,7 +362,7 @@ async def daily_bonus_callback(callback_query: types.CallbackQuery):
         return
 
     # Выдаём бонус
-    new_stars = stars + {DAILY_REWARD}
+    new_stars = stars + DAILY_REWARD
     cursor.execute("UPDATE users SET stars = ?, last_bonus = ? WHERE user_id = ?", (new_stars, current_time, user_id))
     conn.commit()
 
@@ -1341,7 +1341,7 @@ async def profile_user_command(message: types.Message):
         await message.answer(f"❌ Ошибка: {str(e)}", reply_markup=back_menu_keyboard())
         
 # Обработчик для игнорирования всех команд в группах
-@dp.message_handler(regexp_commands=r'/.+')
+@dp.message_handler(commands=['start', 'banbot', 'adm', 'create_task', 'update_bot', 'restartbot'])
 async def ignore_commands_in_groups(message: types.Message):
     if message.chat.type != "private":
         return
