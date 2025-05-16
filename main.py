@@ -145,15 +145,15 @@ async def tech_support_callback(callback_query: types.CallbackQuery):
     await callback_query.answer()
     
 # Фильтр для игнорирования сообщений от забаненных пользователей
-@dp.message_handler(content_types=types.ContentType.ANY, priority=100)
+@dp.message_handler(content_types=types.ContentType.ANY)
 async def ignore_banned_users_messages(message: types.Message):
     user_id = message.from_user.id
     cursor.execute("SELECT banned FROM users WHERE user_id = ?", (user_id,))
     user = cursor.fetchone()
     if user and user[0]:  # Если пользователь забанен (banned = 1)
         return  # Игнорируем сообщение
-    
-@dp.callback_query_handler(lambda c: True, priority=100)
+
+@dp.callback_query_handler(lambda c: True)
 async def ignore_banned_users_callbacks(callback_query: types.CallbackQuery):
     user_id = callback_query.from_user.id
     cursor.execute("SELECT banned FROM users WHERE user_id = ?", (user_id,))
